@@ -1,1 +1,134 @@
+/*====================================================================
+  SCRIPT: Bronze Layer Table Initialization
+  DATABASE: DataWarehouse
 
+  DESCRIPTION:
+  This script initializes the BRONZE layer of a data warehouse by:
+  - Dropping existing tables if they already exist
+  - Recreating raw ingestion tables from CRM and ERP source systems
+
+  These tables are intended to store raw, lightly structured data
+  with minimal transformation. They act as the landing zone for
+  downstream processing into SILVER and GOLD layers.
+
+  NOTES:
+  - No primary/foreign keys are enforced (typical for bronze layer)
+  - Data types closely reflect source system structures
+  - Some fields may require transformation in later layers
+====================================================================*/
+
+-- Switch to target database
+USE DataWarehouse;
+GO
+
+
+/*==============================================================
+  TABLE: bronze.crm_cust_info
+  DESCRIPTION: Stores basic customer information from CRM system
+==============================================================*/
+IF OBJECT_ID('bronze.crm_cust_info', 'U') IS NOT NULL
+    DROP TABLE bronze.crm_cust_info;
+GO
+
+CREATE TABLE bronze.crm_cust_info (
+    cst_id              INT,            -- Unique customer identifier (PK candidate)
+    cst_key             VARCHAR(50),    -- Business key from source system
+    cst_firstname       VARCHAR(50),    -- Customer first name
+    cst_lastname        VARCHAR(50),    -- Customer last name
+    cst_marital_status  VARCHAR(50),    -- Marital status (should be standardized in later layer)
+    cst_gndr            VARCHAR(50),    -- Gender (consider mapping to controlled values)
+    cst_create_date     DATE            -- Record creation date in source system
+);
+GO
+
+
+/*==============================================================
+  TABLE: bronze.crm_prd_info
+  DESCRIPTION: Product master data from CRM
+==============================================================*/
+IF OBJECT_ID('bronze.crm_prd_info', 'U') IS NOT NULL
+    DROP TABLE bronze.crm_prd_info;
+GO
+
+CREATE TABLE bronze.crm_prd_info (
+    prd_id        INT,             -- Unique product identifier (PK candidate)
+    prd_key       VARCHAR(50),     -- Business/product key
+    prd_nm        VARCHAR(100),    -- Product name/description
+    prd_cost      INT,             -- Product cost (consider DECIMAL for currency in later layers)
+    prd_line      VARCHAR(50),     -- Product line/category
+    prd_start_dt  DATETIME,        -- Product availability start date
+    prd_end_dt    DATETIME         -- Product availability end date (NULL = still active)
+);
+GO
+
+
+/*==============================================================
+  TABLE: bronze.crm_sales_details
+  DESCRIPTION: Transaction-level sales data from CRM
+==============================================================*/
+IF OBJECT_ID('bronze.crm_sales_details', 'U') IS NOT NULL
+    DROP TABLE bronze.crm_sales_details;
+GO
+
+CREATE TABLE bronze.crm_sales_details (
+    sls_ord_num   VARCHAR(50),     -- Sales order number (not guaranteed unique at line level)
+    sls_prd_key   VARCHAR(50),     -- Product key (joins to crm_prd_info.prd_key)
+    sls_cust_id   INT,             -- Customer ID (joins to crm_cust_info.cst_id)
+
+    sls_order_dt  INT,             -- Order date (likely format YYYYMMDD; convert to DATE later)
+    sls_ship_dt   INT,             -- Shipping date (same format consideration)
+    sls_due_dt    INT,             -- Due date (same format consideration)
+
+    sls_sales     INT,             -- Total sales amount (consider DECIMAL for precision)
+    sls_quantity  INT,             -- Quantity sold
+    sls_price     INT              -- Unit price (consider DECIMAL for currency accuracy)
+);
+GO
+
+
+/*==============================================================
+  TABLE: bronze.erp_CUST_AZ12
+  DESCRIPTION: ERP customer demographic data (auxiliary source)
+==============================================================*/
+IF OBJECT_ID('bronze.erp_CUST_AZ12', 'U') IS NOT NULL
+    DROP TABLE bronze.erp_CUST_AZ12;
+GO
+
+CREATE TABLE bronze.erp_CUST_AZ12 (
+    CID    VARCHAR(50),    -- Customer identifier (maps to CRM customer key/id)
+    BDATE  DATE,           -- Customer birthdate
+    GEN    VARCHAR(50)     -- Gender (may conflict with CRM; define source of truth later)
+);
+GO
+
+
+/*==============================================================
+  TABLE: bronze.erp_LOC_A101
+  DESCRIPTION: Customer location data from ERP
+==============================================================*/
+IF OBJECT_ID('bronze.erp_LOC_A101', 'U') IS NOT NULL
+    DROP TABLE bronze.erp_LOC_A101;
+GO
+
+CREATE TABLE bronze.erp_LOC_A101 (
+    CID    VARCHAR(50),    -- Customer identifier (join key)
+    CNTRY  VARCHAR(50)     -- Country name (consider ISO standardization in later layers)
+);
+GO
+
+
+/*==============================================================
+  TABLE: bronze.erp_PX_CAT_G1V2
+  DESCRIPTION: Product category mapping from ERP
+==============================================================*/
+IF OBJECT_ID('bronze.erp_PX_CAT_G1V2', 'U') IS NOT NULL
+    DROP TABLE bronze.erp_PX_CAT_G1V2;
+GO
+
+CREATE TABLE bronze.erp_PX_CAT_G1V2 (
+    ID           VARCHAR(50),    -- Product identifier (joins to crm_prd_info.prd_key)
+    CAT          VARCHAR(50),    -- High-level category
+    SUBCAT       VARCHAR(50),    -- Subcategory
+    MAINTENANCE  VARCHAR(50)     -- Maintenance classification/type
+);
+GO
